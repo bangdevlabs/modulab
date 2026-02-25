@@ -1,0 +1,14 @@
+# Normalize line endings
+* text=auto
+
+# JavaScript
+*.js text eol=lf
+
+# HTML
+*.html text eol=lf
+
+# JSON
+*.json text eol=lf
+
+# Lock file
+package-lock.json text eol=lf

@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>ModuLab — Frankenstein Ed.</title>
+
+  <style>
+    :root{
+      --bg:#0f1116; --ui:#111623; --ui-2:#0c101a; --line:#242c3c; --txt:#e8ecf1; --muted:#9aa3b2; --accent:#61dafb;
+      --checker-a:#1b2130; --checker-b:#151a26; --good:#25c2a0; --warn:#f5a524;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.4 ui-monospace,Menlo,Consolas,monospace}
+
+    /* -------- Topbar -------- */
+    .topbar{position:sticky;top:0;z-index:10;display:flex;flex-wrap:wrap;gap:10px;padding:10px;background:var(--ui);border-bottom:1px solid var(--line)}
+    .brand{display:flex;align-items:center;gap:10px;padding:6px 10px;background:linear-gradient(180deg,#131927,#0d1320);border:1px solid var(--line);border-radius:10px}
+    .brand .dot{width:10px;height:10px;background:var(--good);border-radius:50%;box-shadow:0 0 10px var(--good)}
+    .group{display:flex;gap:10px;align-items:center;background:var(--ui-2);border:1px solid var(--line);border-radius:10px;padding:6px 10px}
+    .spacer{flex:1}
+    .filelike{display:inline-block;border:1px dashed var(--line);padding:4px 8px;border-radius:6px;cursor:pointer}
+    label,input,select,button{cursor:pointer}
+
+    /* Palette (Piskel-like) */
+    .palette{display:flex;gap:6px;align-items:center;max-width:min(48vw,900px);overflow-x:auto;padding:4px 6px;height:36px; /* altura fixa evita “pular” a UI */ }
+    .sw{position:relative;width:22px;height:22px;border:1px solid #0004;outline:1px solid #fff1;border-radius:5px;flex:0 0 auto}
+    .sw.sel{box-shadow:0 0 0 2px var(--accent) inset, 0 0 0 2px var(--accent)}
+    .sw .idx{position:absolute;right:-6px;top:-8px;font-size:10px;color:#cbd5e180;background:#0b0e13;border:1px solid #0008;border-radius:6px;padding:0 3px}
+
+    /* -------- Layout -------- */
+    .layout{display:grid;grid-template-columns:300px 1fr 320px;gap:12px;padding:12px}
+    .side,.center{background:var(--ui);border:1px solid var(--line);border-radius:10px;padding:10px}
+    .center{display:flex;flex-direction:column}
+    .toolbar{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+    .tools button{background:#1a2030;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+    .tools button.active{outline:2px solid var(--accent)}
+    .hint{color:var(--muted)}
+
+    /* -------- Canvas -------- */
+    #canvasWrap{
+      position:relative; display:grid; place-items:center;
+      border:1px solid var(--line); border-radius:10px; overflow:auto;
+      background:
+        linear-gradient(45deg, var(--checker-a) 25%, transparent 25%) -8px 0/16px 16px,
+        linear-gradient(45deg, transparent 75%, var(--checker-a) 75%) -8px 0/16px 16px,
+        linear-gradient(45deg, var(--checker-a) 25%, transparent 25%) 0px 8px/16px 16px,
+        linear-gradient(45deg, transparent 75%, var(--checker-a) 75%) 0px 8px/16px 16px,
+        var(--checker-b);
+      min-height: 480px; /* mantém a área estável no 1º render */
+      contain: layout paint; /* evita reflow grande quando canvas redimensiona */
+    }
+    #canvasWrap > canvas{ grid-area:1/1; max-width:100%; height:auto; }
+    #c{ image-rendering:pixelated; image-rendering:crisp-edges; background:transparent; border:1px solid var(--line); touch-action:none; }
+    .overlay{ pointer-events:none; }
+
+    /* -------- Lists / tray -------- */
+    .list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:320px;overflow:auto}
+    .list li{padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:#141925;display:flex;justify-content:space-between;align-items:center;gap:8px}
+    .list li .badge{font-size:11px;color:#cbd5e1;background:#0f1420;border:1px solid var(--line);padding:2px 6px;border-radius:999px}
+    .list li button{padding:2px 6px;border-radius:6px;border:1px solid var(--line);background:#1a2030;color:var(--txt)}
+    .list li button.delete{border-color:#3a2026;background:#28161a;color:#ff9aa9}
+    .row{display:flex;align-items:center}
+    .row.gap{gap:8px}
+    .stack{display:flex;flex-direction:column;gap:8px}
+    .mt{margin-top:8px}
+
+    .tray{ margin-top:10px; background:var(--ui); border:1px solid var(--line); border-radius:10px; padding:8px; display:flex; flex-direction:column; gap:8px; min-height:140px; }
+    .tray-head{display:flex; align-items:center; justify-content:space-between}
+    .tray-controls{display:flex; align-items:center; gap:12px}
+    .tray-rail{ display:flex; gap:14px; align-items:flex-end; overflow-x:auto; overflow-y:hidden; padding-bottom:6px; }
+    .tray-item{ position:relative; flex:0 0 auto; background:#0c0f14; border:1px solid var(--line); border-radius:12px; padding:10px 10px 8px; display:flex; flex-direction:column; align-items:center; gap:6px; min-width:150px; }
+    .tray-item .thumb{ width:120px; height:120px; display:grid; place-items:center; border:1px solid var(--line); border-radius:10px; overflow:hidden;
+      background:
+        linear-gradient(45deg, var(--checker-a) 25%, transparent 25%) -8px 0/16px 16px,
+        linear-gradient(45deg, transparent 75%, var(--checker-a) 75%) -8px 0/16px 16px,
+        linear-gradient(45deg, var(--checker-a) 25%, transparent 25%) 0px 8px/16px 16px,
+        linear-gradient(45deg, transparent 75%, var(--checker-a) 75%) 0px 8px/16px 16px,
+        var(--checker-b);
+    }
+    .tray-item canvas{ image-rendering:pixelated; image-rendering:crisp-edges; }
+    .tray-item .meta{ font-size:12px; color:var(--muted); text-align:center; max-width:140px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .tray-item .piece-btns{ position:absolute; top:6px; left:8px; right:8px; display:flex; justify-content:space-between; gap:6px; opacity:0; transition:opacity .15s ease-out; pointer-events:none; }
+    .tray-item:hover .piece-btns{ opacity:1; pointer-events:auto; }
+    .tray-item .piece-btns button{ padding:2px 6px; font-size:11px; border-radius:8px; border:1px solid var(--line); background:#222733; color:var(--txt); }
+    .tray-item .piece-btns .load{ background:#1f2736; }
+    .tray-item .piece-btns .delete{ border-color:#3a2026; background:#28161a; color:#ff9aa9; }
+
+    /* -------- Right panel thumbs (timeline estilo Piskel) -------- */
+    .thumb{width:64px;height:64px;border:1px solid var(--line);border-radius:8px;background:var(--checker-b);image-rendering:pixelated}
+    .frames-list{display:grid;grid-template-columns:repeat(auto-fill,64px);gap:10px;max-height:340px;overflow:auto}
+    .thumb-item{display:flex;flex-direction:column;align-items:center;gap:4px}
+    .thumb-item.active .thumb{outline:2px solid var(--accent)}
+  </style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="dot" aria-hidden="true"></span>
+    <strong>ModuLab — Frankenstein</strong>
+  </div>
+
+  <div class="group">
+    <label>Tamanho:
+      <select id="size">
+        <option>8</option><option selected>16</option><option>32</option>
+        <option>64</option><option>128</option><option>256</option>
+      </select>
+    </label>
+    <label>Zoom: <input id="zoom" type="range" min="4" max="48" step="1" value="16"/></label>
+    <label title="Mostrar grade (G)"><input id="toggleGrid" type="checkbox" checked/> Grid</label>
+    <label title="Wrap preview 3×3 (tiling)"><input id="toggleWrap" type="checkbox"/> Wrap</label>
+    <label title="Onion Skin (prev/next)"><input id="toggleOnion" type="checkbox"/> Onion</label>
+    <label>Tema:
+      <select id="bgTheme">
+        <option value="dark" selected>dark</option>
+        <option value="light">light</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="group">
+    <div id="palette" class="palette"></div>
+    <input type="color" id="colorPicker" value="#ffffff" title="Adicionar cor"/>
+    <button id="addColor" title="Adicionar cor à paleta">＋</button>
+    <button id="loadNES" title="Carregar paleta NES 2C02">NES 2C02</button>
+    <button id="loadLucasLeChuck" title="Carregar paleta Lucas (LeChuck)">Lucas / LeChuck</button>
+    <label>Brush: <input id="brushSize" type="range" min="1" max="8" step="1" value="1" /></label>
+  </div>
+
+  <div class="group">
+    <button id="exportPNG">Export PNG</button>
+    <button id="exportJSON">Export JSON</button>
+    <label class="filelike">
+      <input id="importJSON" type="file" accept="application/json,image/png" hidden>
+      <span id="importBtn">Import JSON/PNG</span>
+    </label>
+    <label>Import:
+      <select id="importMode" title="flex: adapta size e amplia paleta · strict: valida tudo">
+        <option value="flex" selected>flex</option>
+        <option value="strict">strict</option>
+      </select>
+    </label>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- ESQUERDA -->
+  <aside class="side left">
+    <h3>Issues</h3>
+    <ul id="issues" class="list"></ul>
+
+    <h3>Stencil</h3>
+    <div class="stack">
+      <label><input type="checkbox" id="stencilEnable"/> Ativar Stencil</label>
+      <div>Cor protegida: <select id="stencilColor"></select></div>
+    </div>
+
+    <h3>Fill</h3>
+    <div class="stack">
+      <label><input type="radio" name="fillmode" value="contig" checked/> Contiguous</label>
+      <label><input type="radio" name="fillmode" value="global"/> Global</label>
+      <label><input type="checkbox" id="patternUse"/> Pattern 8×8</label>
+      <div id="patternBox" class="patternbox">
+        <canvas id="pattern" width="128" height="128"></canvas>
+        <div class="row">
+          Alt: <select id="patternAltColor"></select>
+          <button id="patternClear">Limpar</button>
+        </div>
+      </div>
+    </div>
+
+    <h3>Add-ons</h3>
+    <div class="stack">
+      <div class="row gap">
+        <button id="nx_mirrorH">Mirror H</button>
+        <button id="nx_mirrorV">Mirror V</button>
+        <button id="nx_rot90">Rot 90</button>
+        <button id="nx_rot180">Rot 180</button>
+        <button id="nx_rot270">Rot 270</button>
+      </div>
+      <div class="row gap">
+        <input id="nx_dirName" placeholder="front_walk" style="flex:1">
+        <button id="nx_exportNES">Export NES (strict)</button>
+      </div>
+    </div>
+
+    <h3>Git Remote</h3>
+    <div class="stack">
+      <div class="row gap">
+        <input id="ghOwner"  placeholder="owner"  style="flex:1">
+        <input id="ghRepo"   placeholder="repo"   style="flex:1">
+      </div>
+      <div class="row gap">
+        <input id="ghBranch" placeholder="branch (main)" style="flex:1">
+        <input id="ghToken"  placeholder="token (classic PAT)" style="flex:1" type="password">
+      </div>
+      <div class="row gap">
+        <input id="ghBox" placeholder="LegoBox name (ex: NKOTC ou CB)" style="flex:1">
+        <button id="ghConnect" type="button">Connect</button>
+      </div>
+      <small class="hint">Salvamos em <code>modulab/&lt;box&gt;/...</code> no repo/branch configurados.</small>
+    </div>
+  </aside>
+
+  <!-- CENTRO -->
+  <section class="center">
+    <div class="toolbar">
+      <div class="tools">
+        <button data-tool="brush"  title="Brush (B)">🖌</button>
+        <button data-tool="eraser" title="Borracha (E)">🧽</button>
+        <button data-tool="fill"   title="Balde (F)">🪣</button>
+        <button data-tool="line"   title="Linha (L)">📏</button>
+        <button data-tool="rect"   title="Retângulo (R)">▭</button>
+        <button data-tool="oval"   title="Oval (O)">🟠</button>
+        <button data-tool="poly"   title="Polígono (P)">🔺</button>
+        <button data-tool="eyedrop" title="Conta-gotas (I)">🎯</button>
+        <button data-tool="select" title="Select (M)">▦</button>
+        <label title="Outline vs Fill"><input id="outlineOnly" type="checkbox"/> Outline</label>
+      </div>
+      <div class="spacer"></div>
+      <button id="btnUndo" disabled>Undo</button>
+      <button id="btnRedo" disabled>Redo</button>
+      <small class="hint">Hotkeys: B,E,F,I,L,R,O,P,G, [ ], 1..0 — Undo: Cmd/Ctrl+Z — Redo: Shift+Cmd/Ctrl+Z</small>
+    </div>
+
+    <div id="canvasWrap">
+      <!-- width/height aqui são apenas iniciais; modulab-canvas ajusta depois -->
+      <canvas id="c" width="512" height="512"></canvas>
+      <canvas id="overlay" width="512" height="512" class="overlay"></canvas>
+    </div>
+
+    <!-- Bandeja LegoBox -->
+    <section id="legoTray" class="tray">
+      <div class="tray-head">
+        <strong>Peças do LegoBox</strong>
+        <div class="tray-controls">
+          <label>Categoria:
+            <select id="trayCat">
+              <option value="__all__" selected>Todas</option>
+            </select>
+          </label>
+          <small class="hint">Clique para carimbar · ⌫ apaga · ⌥/Alt renomeia</small>
+        </div>
+      </div>
+      <div id="trayRail" class="tray-rail"></div>
+    </section>
+  </section>
+
+  <!-- DIREITA -->
+  <aside class="side right">
+    <h3>Timeline</h3>
+    <div class="row gap">
+      <button id="frameAdd">＋</button>
+      <button id="frameDup">⎘</button>
+      <button id="frameDel">🗑</button>
+      <button id="frameUp">↑</button>
+      <button id="frameDown">↓</button>
+    </div>
+
+    <!-- thumbs estilo Piskel (o app pode popular com canvases 64x64) -->
+    <div id="frames" class="frames-list mt"></div>
+
+    <div class="row gap mt">
+      <button id="play">▶</button>
+      <button id="pause">⏸</button>
+      <label>FPS <input id="fps" type="number" min="1" max="60" value="6" style="width:60px"/></label>
+    </div>
+
+    <h3>Onion Skin+</h3>
+    <div class="stack">
+      <label>Antes <input id="onionPrev" type="number" min="0" max="3" value="1" style="width:60px"></label>
+      <label>Depois <input id="onionNext" type="number" min="0" max="3" value="1" style="width:60px"></label>
+      <label>Intensidade <input id="onionAlpha" type="range" min="0.05" max="0.5" step="0.05" value="0.25"></label>
+    </div>
+
+    <h3>Dither</h3>
+    <div><label><input type="checkbox" id="ditherEnable"> Dither</label></div>
+    <div><label>Cor B (alt): <select id="ditherAltColor"></select></label></div>
+    <div><label>Modo:
+      <select id="ditherMode">
+        <option value="CHECK">Checker 2×2 (50%)</option>
+        <option value="LA2x2" selected>Lucas 2×2</option>
+        <option value="LA4x4">Lucas 4×4</option>
+      </select>
+    </label></div>
+
+    <h3>Color Cycling</h3>
+    <div class="stack">
+      <label>Início <input id="ccStart" type="number" min="0" value="1"/></label>
+      <label>Fim <input id="ccEnd" type="number" min="0" value="4"/></label>
+      <label>Velocidade (ms) <input id="ccMs" type="number" min="50" step="10" value="200"/></label>
+      <div class="row gap">
+        <button id="ccStartBtn">Start</button>
+        <button id="ccStopBtn">Stop</button>
+      </div>
+      <label>Pares (A,B): <input id="ccPair" placeholder="ex: 3,14"/></label>
+      <div class="row gap">
+        <button id="ccPairStartBtn">Start Pair</button>
+        <button id="ccPairStopBtn">Stop</button>
+      </div>
+    </div>
+
+    <h3>LegoBox</h3>
+    <div class="stack">
+      <label>Universe:
+        <select id="universe" style="min-width:160px">
+          <option value="NKOTC">NKOTC (NES)</option>
+          <option value="CB">CB / Lucas</option>
+        </select>
+      </label>
+      <small class="hint">
+        Trocar o Universe redefine paleta, tamanho e regras do box.
+      </small>
+
+      <h4>Peças deste LegoBox</h4>
+      <div class="row gap">
+        <button id="savePiece" type="button">Save Piece</button>
+        <button id="saveAnim"  type="button">Save Anim</button>
+      </div>
+      <ul id="legoList" class="list"></ul>
+    </div>
+
+<!-- App (bundle 1.2) -->
+<script type="module" src="./src/modulab-app.js"></script>
+
+<!-- Ponte Git (emite evento consumido por modulab-io.js) -->
+<script>
+  document.getElementById('ghConnect')?.addEventListener('click', ()=>{
+    const detail = {
+      owner:  document.getElementById('ghOwner')?.value.trim(),
+      repo:   document.getElementById('ghRepo')?.value.trim(),
+      branch: document.getElementById('ghBranch')?.value.trim() || 'main',
+      token:  document.getElementById('ghToken')?.value.trim(),
+      boxName:document.getElementById('ghBox')?.value.trim()
+    };
+    window.dispatchEvent(new CustomEvent('modulab:github-connect', { detail }));
+  });
+</script>
+</body>
+</html>
