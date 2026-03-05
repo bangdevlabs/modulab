@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: legobox-server
+    runtime: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: LEGOBOX_TOKEN
+        generateValue: true
+      - key: DATA_DIR
+        value: /data
+      - key: PORT
+        value: 3000
+    disk:
+      name: legobox-data
+      mountPath: /data
+      sizeGB: 1

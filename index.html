@@ -187,21 +187,14 @@
       </div>
     </div>
 
-    <h3>Git Remote</h3>
+    <h3>LegoBox Remote</h3>
     <div class="stack">
+      <input id="lbUrl" placeholder="https://legobox-server.onrender.com" style="width:100%">
       <div class="row gap">
-        <input id="ghOwner"  placeholder="owner"  style="flex:1">
-        <input id="ghRepo"   placeholder="repo"   style="flex:1">
+        <input id="lbToken" placeholder="token da equipe" type="password" style="flex:1">
+        <button id="lbConnect" type="button">Connect</button>
       </div>
-      <div class="row gap">
-        <input id="ghBranch" placeholder="branch (main)" style="flex:1">
-        <input id="ghToken"  placeholder="token (classic PAT)" style="flex:1" type="password">
-      </div>
-      <div class="row gap">
-        <input id="ghBox" placeholder="LegoBox name (ex: NKOTC ou CB)" style="flex:1">
-        <button id="ghConnect" type="button">Connect</button>
-      </div>
-      <small class="hint">Salvamos em <code>modulab/&lt;box&gt;/...</code> no repo/branch configurados.</small>
+      <small class="hint">Servidor compartilhado da equipe. Peça o token pro admin.</small>
     </div>
   </aside>
 
@@ -311,33 +304,25 @@
           <option value="CB">CB / Lucas</option>
         </select>
       </label>
-      <small class="hint">
-        Trocar o Universe redefine paleta, tamanho e regras do box.
-      </small>
+      <small class="hint">Trocar o Universe redefine paleta, tamanho e regras do box.</small>
 
-      <h4>Peças deste LegoBox</h4>
+      <h4>Projetos</h4>
+      <div class="row gap">
+        <select id="projectSelect" style="flex:1"><option value="">— selecione —</option></select>
+        <button id="loadProject" type="button">Load</button>
+      </div>
+      <div class="row gap">
+        <input id="projectName" placeholder="nome do projeto" style="flex:1">
+        <button id="saveProject" type="button">Save</button>
+      </div>
+
+      <h4>Peças</h4>
       <div class="row gap">
         <button id="savePiece" type="button">Save Piece</button>
         <button id="saveAnim"  type="button">Save Anim</button>
       </div>
-      <ul id="legoList" class="list"></ul>
     </div>
 
-<!-- App (bundle 1.2) -->
 <script type="module" src="./src/modulab-app.js"></script>
-
-<!-- Ponte Git (emite evento consumido por modulab-io.js) -->
-<script>
-  document.getElementById('ghConnect')?.addEventListener('click', ()=>{
-    const detail = {
-      owner:  document.getElementById('ghOwner')?.value.trim(),
-      repo:   document.getElementById('ghRepo')?.value.trim(),
-      branch: document.getElementById('ghBranch')?.value.trim() || 'main',
-      token:  document.getElementById('ghToken')?.value.trim(),
-      boxName:document.getElementById('ghBox')?.value.trim()
-    };
-    window.dispatchEvent(new CustomEvent('modulab:github-connect', { detail }));
-  });
-</script>
 </body>
 </html>

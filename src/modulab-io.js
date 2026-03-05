@@ -109,75 +109,47 @@ async function importPNG(file, policy){
   });
 }
 
-/* ---------- GitHub remoto (Contents API) ---------- */
-export const github = (()=>{
-  let conf = { owner:'', repo:'', branch:'main', token:'', box:'' };
+/* ---------- LegoBox remoto (servidor compartilhado da equipe) ---------- */
+export const legobox = (()=>{
+  let conf = { url:'', token:'' };
 
-  const base = () => `https://api.github.com/repos/${conf.owner}/${conf.repo}/contents`;
-  const headers = () => ({ 'Authorization': `token ${conf.token}`, 'Accept':'application/vnd.github+json' });
+  const isConnected = ()=> !!(conf.url && conf.token);
+  const connect = ({ url, token })=> { conf = { url: url.replace(/\/$/, ''), token }; };
 
-  const b64utf8 = (s)=> btoa(unescape(encodeURIComponent(s)));
-  const b64bin  = (u8)=>{ let b=''; for(let i=0;i<u8.length;i++) b+=String.fromCharCode(u8[i]); return btoa(b); };
+  const writeHeaders = ()=> ({
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${conf.token}`
+  });
 
-  const isConnected = ()=> !!(conf.owner && conf.repo && conf.branch && conf.token && conf.box);
-  const connect = ({ owner, repo, branch='main', token, boxName })=>{
-    conf = { owner, repo, branch, token, box: boxName };
-  };
-
-  async function _get(path){
-    const r = await fetch(`${base()}/${encodeURIComponent(path)}?ref=${encodeURIComponent(conf.branch)}`, { headers: headers() });
-    if (r.status===404) return null;
-    if (!r.ok) throw new Error(await r.text());
+  async function list(kind){
+    if(!isConnected()) throw new Error('LegoBox não conectado');
+    const r = await fetch(`${conf.url}/${kind}`);
+    if(!r.ok) throw new Error(await r.text());
     return r.json();
   }
-  async function _put(path, base64, message){
-    const prev = await _get(path);
-    const body = { message, content: base64, branch: conf.branch, ...(prev?.sha?{sha:prev.sha}:{}) };
-    const r = await fetch(`${base()}/${encodeURIComponent(path)}`, {
-      method:'PUT', headers:{ ...headers(), 'Content-Type':'application/json' }, body:JSON.stringify(body)
+  async function loadJSON(kind, name){
+    if(!isConnected()) throw new Error('LegoBox não conectado');
+    const r = await fetch(`${conf.url}/${kind}/${encodeURIComponent(name)}`);
+    if(r.status===404) throw new Error('404');
+    if(!r.ok) throw new Error(await r.text());
+    return r.json();
+  }
+  async function saveJSON(kind, name, data){
+    if(!isConnected()) throw new Error('LegoBox não conectado');
+    const r = await fetch(`${conf.url}/${kind}/${encodeURIComponent(name)}`, {
+      method:'PUT', headers: writeHeaders(), body: JSON.stringify(data)
     });
-    if (!r.ok) throw new Error(await r.text());
+    if(!r.ok) throw new Error(await r.text());
+    return true;
+  }
+  async function deleteJSON(kind, name){
+    if(!isConnected()) throw new Error('LegoBox não conectado');
+    const r = await fetch(`${conf.url}/${kind}/${encodeURIComponent(name)}`, {
+      method:'DELETE', headers: writeHeaders()
+    });
+    if(!r.ok) throw new Error(await r.text());
     return true;
   }
 
-  function _dir(kind){
-    const root = `modulab/${conf.box}`;
-    if (kind==='project') return `${root}/projects`;
-    if (kind==='piece')   return `${root}/pieces`;
-    if (kind==='sprite')  return `${root}/sprites`;
-    if (kind==='chr')     return `${root}/assets/chr`;
-    if (kind==='nam')     return `${root}/assets/nam`;
-    if (kind==='attr')    return `${root}/assets/nam`;
-    if (kind==='pal')     return `${root}/assets/pal`;
-    return root;
-  }
-  function _path(kind, name){
-    if (kind==='chr'||kind==='nam'||kind==='attr'||kind==='pal') return `${_dir(kind)}/${name}`;
-    return `${_dir(kind)}/${name}.json`;
-  }
-
-  async function saveJSON(kind, name, data){
-    if(!isConnected()) throw new Error('Git não conectado');
-    return _put(_path(kind,name), b64utf8(JSON.stringify(data,null,2)), `modulab: save ${kind}/${name}`);
-  }
-  async function loadJSON(kind, name){
-    if(!isConnected()) throw new Error('Git não conectado');
-    const got = await _get(_path(kind,name)); if(!got) throw new Error('404');
-    const text = decodeURIComponent(escape(atob(String(got.content||'').replace(/\n/g,''))));
-    return JSON.parse(text);
-  }
-  async function list(kind){
-    if(!isConnected()) throw new Error('Git não conectado');
-    const r = await fetch(`${base()}/${encodeURIComponent(_dir(kind))}?ref=${encodeURIComponent(conf.branch)}`, { headers: headers() });
-    if (r.status===404) return [];
-    if (!r.ok) throw new Error(await r.text());
-    const arr = await r.json();
-    return (Array.isArray(arr)?arr:[]).filter(it=>it.type==='file').map(it=>it.name.replace(/\.json$/,''));
-  }
-  async function saveBytes(kind, name, bytes){
-    if(!isConnected()) throw new Error('Git não conectado');
-    return _put(_path(kind,name), b64bin(bytes), `modulab: save ${kind}/${name}`);
-  }
-
-  return { connect, isConnected, saveJSON, loadJSON, list, saveBytes };
+  return { connect, isConnected, saveJSON, loadJSON, deleteJSON, list };
 })();

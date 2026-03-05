@@ -18,7 +18,7 @@ import {
   doUndo, doRedo
 } from './modulab-canvas.js';
 
-import { exportPNG, exportJSON, exportSpritesheet, importFromFile, github } from './modulab-io.js';
+import { exportPNG, exportJSON, exportSpritesheet, importFromFile, legobox } from './modulab-io.js';
 
 /* ---------- helpers ---------- */
 const byId = (id)=> document.getElementById(id);
@@ -352,111 +352,138 @@ function wireTimeline(){
   renderFramesList();
 }
 
-/* ---------- Git Bridge ---------- */
+/* ---------- LegoBox Bridge ---------- */
 function wireGitBridge(){
-  byId('ghConnect')?.addEventListener('click', ()=>{
-    const detail={
-      owner:byId('ghOwner')?.value.trim(),
-      repo: byId('ghRepo') ?.value.trim(),
-      branch: byId('ghBranch')?.value.trim() || 'main',
-      token: byId('ghToken') ?.value.trim(),
-      boxName:byId('ghBox')   ?.value.trim()
-    };
-    github.connect(detail);
-    alert(github.isConnected()? 'Git conectado ✅' : 'Dados inválidos pro Git.');
+  byId('lbConnect')?.addEventListener('click', async ()=>{
+    const url   = (byId('lbUrl')  ?.value || '').trim();
+    const token = (byId('lbToken')?.value || '').trim();
+    if(!url || !token) return alert('Preencha a URL e o token.');
+    legobox.connect({ url, token });
+    alert('LegoBox conectado ✅');
+    await refreshProjectsFromGit();
+    await refreshPiecesFromGit();
   });
 
   byId('saveProject')?.addEventListener('click', async ()=>{
-    if(!github.isConnected()) return alert('Conecte o Git (pane esquerda).');
-    const name=(byId('projectSelect')?.value || byId('projectName')?.value || 'untitled').trim();
+    if(!legobox.isConnected()) return alert('Conecte o LegoBox primeiro.');
+    const name = (byId('projectName')?.value || 'untitled').trim();
     if(!name) return alert('Nome do projeto vazio.');
-    const data={ N, palette, frames };
-    try{ await github.saveJSON('project', name, data); alert(`Projeto "${name}" salvo.`); await refreshProjectsFromGit(); }
-    catch(err){ console.error(err); alert('Falha ao salvar no Git.'); }
+    try{
+      await legobox.saveJSON('projects', name, { N, palette, frames });
+      alert(`Projeto "${name}" salvo.`);
+      await refreshProjectsFromGit();
+    }catch(err){ console.error(err); alert('Falha ao salvar projeto.'); }
   });
 
   byId('loadProject')?.addEventListener('click', async ()=>{
-    if(!github.isConnected()) return alert('Conecte o Git (pane esquerda).');
-    const name=(byId('projectSelect')?.value || 'untitled').trim();
+    if(!legobox.isConnected()) return alert('Conecte o LegoBox primeiro.');
+    const name = (byId('projectSelect')?.value || '').trim();
+    if(!name) return alert('Selecione um projeto.');
     try{
-      const data=await github.loadJSON('project', name);
-      frames.splice(0,frames.length, ...(data.frames||[makePixels(N)]));
-      setState({ N:data.size||N, fi:0, palette:Array.isArray(data.palette)&&data.palette.length? data.palette : palette });
-      resizeCanvas(); draw(); alert(`Projeto "${name}" carregado.`);
-    }catch(err){ console.error(err); alert('Falha ao carregar do Git.'); }
+      const data = await legobox.loadJSON('projects', name);
+      frames.splice(0, frames.length, ...(data.frames || [makePixels(N)]));
+      setState({ N: data.N || data.size || N, fi: 0, palette: data.palette?.length ? data.palette : palette });
+      resizeCanvas(); draw(); renderPaletteUI();
+      alert(`Projeto "${name}" carregado.`);
+    }catch(err){ console.error(err); alert('Falha ao carregar projeto.'); }
   });
 
   byId('savePiece')?.addEventListener('click', async ()=>{
-    if(!github.isConnected()) return alert('Conecte o Git (pane esquerda).');
-    const name=prompt('Nome da peça?','piece')?.trim(); if(!name) return;
-    const hasSel=selectionAPI?.hasSelection?.()||false;
-    const rect= hasSel? selectionAPI.getRect() : {x:0,y:0,w:N,h:N};
-    const pixels= hasSel? selectionAPI.pick()    : frames[fi].map(r=>r.slice());
+    if(!legobox.isConnected()) return alert('Conecte o LegoBox primeiro.');
+    const name = prompt('Nome da peça?', 'piece')?.trim(); if(!name) return;
+    const hasSel = selectionAPI?.hasSelection?.() || false;
+    const rect   = hasSel ? selectionAPI.getRect() : { x:0, y:0, w:N, h:N };
+    const pixels = hasSel ? selectionAPI.pick()    : frames[fi].map(r=>r.slice());
     try{
-      await github.saveJSON('piece', name, { w:rect.w, h:rect.h, pixels, paletteSnapshot: palette.slice() });
-      alert(`Peça "${name}" salva.`); await refreshPiecesFromGit();
-    }catch(err){ console.error(err); alert('Falha ao salvar peça no Git.'); }
+      await legobox.saveJSON('pieces', name, { w:rect.w, h:rect.h, pixels, paletteSnapshot: palette.slice() });
+      alert(`Peça "${name}" salva.`);
+      await refreshPiecesFromGit();
+    }catch(err){ console.error(err); alert('Falha ao salvar peça.'); }
   });
 
   byId('saveAnim')?.addEventListener('click', async ()=>{
-    if(!github.isConnected()) return alert('Conecte o Git (pane esquerda).');
-    const name=prompt('Nome da animação?','anim')?.trim(); if(!name) return;
-    try{ await github.saveJSON('sprite', name, { size:N, palette, frames }); alert('Anim salvo.'); }
-    catch(err){ console.error(err); alert('Falha ao salvar anim.'); }
+    if(!legobox.isConnected()) return alert('Conecte o LegoBox primeiro.');
+    const name = prompt('Nome da animação?', 'anim')?.trim(); if(!name) return;
+    try{
+      await legobox.saveJSON('sprites', name, { size:N, palette, frames });
+      alert('Animação salva.');
+    }catch(err){ console.error(err); alert('Falha ao salvar animação.'); }
   });
 }
 
 async function refreshProjectsFromGit(){
-  const sel=byId('projectSelect'); if(!sel||!github.isConnected()) return;
-  const list=await github.list('project'); sel.innerHTML='';
-  list.forEach(n=>{ const o=document.createElement('option'); o.value=n; o.textContent=n; sel.appendChild(o); });
+  const sel = byId('projectSelect'); if(!sel || !legobox.isConnected()) return;
+  try{
+    const list = await legobox.list('projects');
+    sel.innerHTML = '';
+    list.forEach(n=>{ const o=document.createElement('option'); o.value=n; o.textContent=n; sel.appendChild(o); });
+  }catch(err){ console.error('refreshProjects:', err); }
 }
+
 async function refreshPiecesFromGit(){
   const rail=byId('trayRail'), catSel=byId('trayCat');
-  if(!rail||!catSel||!github.isConnected()) return;
-  rail.innerHTML='';
-  const names=await github.list('piece');
-  const all=[];
-  for(const n of names){ const d=await github.loadJSON('piece', n); all.push({name:n, data:d, category:d.category||''}); }
-  const setCats=Array.from(new Set(all.map(it=>it.category).filter(Boolean))).sort();
-  const prev=catSel.value||'__all__';
-  catSel.innerHTML='<option value="__all__">Todas</option>'+setCats.map(c=>`<option value="${c}">${c}</option>`).join('');
-  catSel.value=setCats.includes(prev)? prev : '__all__';
-  const active=catSel.value;
-  const filtered=all.filter(it=> active==='__all__' ? true : it.category===active);
+  if(!rail || !catSel || !legobox.isConnected()) return;
+  rail.innerHTML = '<span style="color:var(--muted);font-size:12px">Carregando peças…</span>';
 
-  if(!filtered.length){
-    const empty=document.createElement('div'); empty.className='hint'; empty.textContent='(sem peças nesta categoria)';
-    rail.appendChild(empty); return;
-  }
+  try{
+    const names = await legobox.list('pieces');
+    const all = await Promise.all(
+      names.map(async n => {
+        const d = await legobox.loadJSON('pieces', n);
+        return { name:n, data:d, category: d.category||'' };
+      })
+    );
 
-  for(const meta of filtered){
-    const item=document.createElement('div'); item.className='tray-item';
-    const thumb=document.createElement('div'); thumb.className='thumb';
-    const can=document.createElement('canvas');
-    const scale=Math.max(2, Math.floor(120/Math.max(meta.data.w, meta.data.h)));
-    can.width=meta.data.w*scale; can.height=meta.data.h*scale;
-    const cx=can.getContext('2d',{willReadFrequently:true});
-    for(let y=0;y<meta.data.h;y++) for(let x=0;x<meta.data.w;x++){
-      const ix=meta.data.pixels[y][x]; if(ix>=0){ cx.fillStyle=(meta.data.paletteSnapshot||palette)[ix]; cx.fillRect(x*scale,y*scale,scale,scale); }
+    const setCats = Array.from(new Set(all.map(it=>it.category).filter(Boolean))).sort();
+    const prev = catSel.value || '__all__';
+    catSel.innerHTML = '<option value="__all__">Todas</option>' + setCats.map(c=>`<option value="${c}">${c}</option>`).join('');
+    catSel.value = setCats.includes(prev) ? prev : '__all__';
+
+    const active   = catSel.value;
+    const filtered = all.filter(it=> active==='__all__' ? true : it.category===active);
+    rail.innerHTML  = '';
+
+    if(!filtered.length){
+      const empty=document.createElement('div'); empty.className='hint'; empty.textContent='(sem peças nesta categoria)';
+      rail.appendChild(empty); return;
     }
-    thumb.appendChild(can); item.appendChild(thumb);
-    const label=document.createElement('div'); label.className='meta';
-    label.textContent=`${meta.name} — ${meta.data.w}×${meta.data.h}${meta.category? ' · '+meta.category : ''}`;
-    item.appendChild(label);
 
-    const btns=document.createElement('div'); btns.className='piece-btns';
-    const loadBtn=document.createElement('button'); loadBtn.className='load'; loadBtn.textContent='Load';
-    loadBtn.onclick=(ev)=>{ ev.stopPropagation(); selectionAPI.setStamp({ w:meta.data.w, h:meta.data.h, pixels:meta.data.pixels }); };
-    const delBtn=document.createElement('button'); delBtn.className='delete'; delBtn.textContent='Del';
-    delBtn.onclick=(ev)=>{ ev.stopPropagation(); alert('Apague no GitHub por enquanto.'); };
-    btns.appendChild(loadBtn); btns.appendChild(delBtn);
-    item.appendChild(btns);
+    for(const meta of filtered){
+      const item=document.createElement('div'); item.className='tray-item';
+      const thumb=document.createElement('div'); thumb.className='thumb';
+      const can=document.createElement('canvas');
+      const scale=Math.max(2, Math.floor(120/Math.max(meta.data.w, meta.data.h)));
+      can.width=meta.data.w*scale; can.height=meta.data.h*scale;
+      const cx=can.getContext('2d',{willReadFrequently:true});
+      for(let y=0;y<meta.data.h;y++) for(let x=0;x<meta.data.w;x++){
+        const ix=meta.data.pixels[y][x]; if(ix>=0){ cx.fillStyle=(meta.data.paletteSnapshot||palette)[ix]; cx.fillRect(x*scale,y*scale,scale,scale); }
+      }
+      thumb.appendChild(can); item.appendChild(thumb);
+      const label=document.createElement('div'); label.className='meta';
+      label.textContent=`${meta.name} — ${meta.data.w}×${meta.data.h}${meta.category?' · '+meta.category:''}`;
+      item.appendChild(label);
 
-    item.onclick=()=> selectionAPI.setStamp({ w:meta.data.w, h:meta.data.h, pixels: meta.data.pixels });
-    rail.appendChild(item);
+      const btns=document.createElement('div'); btns.className='piece-btns';
+      const loadBtn=document.createElement('button'); loadBtn.className='load'; loadBtn.textContent='Load';
+      loadBtn.onclick=(ev)=>{ ev.stopPropagation(); selectionAPI.setStamp({ w:meta.data.w, h:meta.data.h, pixels:meta.data.pixels }); };
+      const delBtn=document.createElement('button'); delBtn.className='delete'; delBtn.textContent='Del';
+      delBtn.onclick=async (ev)=>{
+        ev.stopPropagation();
+        if(!confirm(`Apagar "${meta.name}"?`)) return;
+        try{ await legobox.deleteJSON('pieces', meta.name); await refreshPiecesFromGit(); }
+        catch(err){ alert('Falha ao apagar peça.'); }
+      };
+      btns.appendChild(loadBtn); btns.appendChild(delBtn);
+      item.appendChild(btns);
+
+      item.onclick=()=> selectionAPI.setStamp({ w:meta.data.w, h:meta.data.h, pixels:meta.data.pixels });
+      rail.appendChild(item);
+    }
+    catSel.onchange = ()=> refreshPiecesFromGit();
+  }catch(err){
+    console.error('refreshPieces:', err);
+    rail.innerHTML = '<span style="color:var(--muted);font-size:12px">Erro ao carregar peças.</span>';
   }
-  catSel.onchange = ()=> refreshPiecesFromGit();
 }
 
 /* ---------- Color Cycling ---------- */
