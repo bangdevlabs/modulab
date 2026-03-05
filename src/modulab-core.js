@@ -45,9 +45,24 @@ function lucasLeChuckPalette(){
     '#0fd2ff','#5ce1ff','#b3f0ff','#ffe08a','#ffd146'
   ];
 }
+function mcuPalette(){
+  // MCU-8 — índices 0-7 mapeiam 1:1 para mcu8.h
+  // índice 0 = transparente no jogo (mostrado como cor escura no editor)
+  return [
+    '#202020', // 0: transparente (game)
+    '#000000', // 1: preto
+    '#880000', // 2: vermelho escuro
+    '#808080', // 3: cinza
+    '#FFA500', // 4: laranja
+    '#008000', // 5: verde
+    '#800080', // 6: roxo
+    '#FFFF00', // 7: amarelo
+  ];
+}
 export const UNIVERSES = {
-  NKOTC: { id:'NKOTC', name:'NKOTC - NES 8×8',  tile:8,  maxColors:4,  defaultSize:256, palette:()=>nesMasterPalette().slice(0,32) },
-  CB:    { id:'CB',    name:'CB - LUCAS 32×32', tile:32, maxColors:32, defaultSize:256, palette:()=>lucasLeChuckPalette() }
+  NKOTC: { id:'NKOTC', name:'NKOTC - NES 8×8',    tile:8,  maxColors:4,  defaultSize:256, palette:()=>nesMasterPalette().slice(0,32) },
+  CB:    { id:'CB',    name:'CB - LUCAS 32×32',   tile:32, maxColors:32, defaultSize:256, palette:()=>lucasLeChuckPalette() },
+  MCU:   { id:'MCU',   name:'MCU - BangDev 16×16', tile:16, maxColors:8,  defaultSize:16,  palette:()=>mcuPalette() }
 };
 export const BG_THEMES = {
   dark:{ checkerA:'#1b2130', checkerB:'#151a26', pageBg:'#0f1116' },
@@ -70,6 +85,7 @@ const _state = {
 
   frames:[ makePixels(256) ],
   fi:0,
+  actions:[], // [{id, startFrame, endFrame, fps}]
 
   pattern: makePattern(PAT_N),
   patternAltIx:0,
@@ -94,6 +110,7 @@ export let N=_state.N, Z=_state.Z;
 export let showGrid=_state.showGrid, wrapPreview=_state.wrapPreview, showOnion=_state.showOnion;
 export let palette=_state.palette, selColorIx=_state.selColorIx, brushSize=_state.brushSize;
 export let frames=_state.frames, fi=_state.fi;
+export let actions=_state.actions;
 export let pattern=_state.pattern, patternAltIx=_state.patternAltIx;
 export let ditherOn=_state.ditherOn, ditherAltIx=_state.ditherAltIx, ditherMode=_state.ditherMode;
 export let cc = _state.cc;
@@ -109,7 +126,7 @@ function _syncLive(){
     palette, selColorIx, brushSize, frames, fi,
     pattern, patternAltIx, ditherOn, ditherAltIx, ditherMode,
     cc, stencilOn, stencilProtectedIx, lastIssues,
-    playing, playTimer, bgTheme
+    playing, playTimer, bgTheme, actions
   } = _state);
 }
 // chama 1x ao carregar o módulo

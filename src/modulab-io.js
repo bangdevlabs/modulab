@@ -109,6 +109,87 @@ async function importPNG(file, policy){
   });
 }
 
+/* ---------- EXPORT: sprite16 JSON (formato MCU / BangDev) ---------- */
+// Compatível com sprite16_load_json do engine C.
+// Mapeamento de paleta: índice ModuLab → índice MCU-8 é 1:1.
+// Célula vazia (-1) → índice 0 (transparente no engine).
+export function exportSprite16JSON(){
+  const px = frames[fi];
+  const W = px[0].length, H = px.length;
+  const data = [];
+  for(let y=0;y<H;y++){
+    const row=[];
+    for(let x=0;x<W;x++){
+      const ix=px[y][x];
+      row.push(ix<0 ? 0 : ix); // -1 (vazio) vira 0 (transparente no engine)
+    }
+    data.push(row);
+  }
+  const obj = { type:'sprite16', width:W, height:H, palette:'MCU-8', data };
+  const blob = new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});
+  const url  = URL.createObjectURL(blob);
+  download(url, `sprite_${W}x${H}.json`);
+  setTimeout(()=>URL.revokeObjectURL(url), 800);
+}
+
+
+/* ---------- EXPORT: sprite atlas + JSON de animação (MCU / BangDev) ---------- */
+// actions: [{id, startFrame, endFrame, fps}] em ordem de linha no atlas
+// Gera dois downloads: <name>.atlas.png  e  <name>.anim.json
+export function exportSpriteAtlas({ name='sprite', actions, frames, N, palette }){
+  if(!actions || !actions.length){ alert('Nenhuma action definida.'); return; }
+  const cols = Math.max(...actions.map(a => a.endFrame - a.startFrame + 1));
+  const rows = actions.length;
+  const cv = document.createElement('canvas');
+  cv.width  = cols * N;
+  cv.height = rows * N;
+  const ctx = cv.getContext('2d');
+
+  actions.forEach((action, rowIdx) => {
+    for(let f = action.startFrame; f <= action.endFrame; f++){
+      if(f >= frames.length) break;
+      const colIdx = f - action.startFrame;
+      const fr = frames[f];
+      for(let y=0;y<N;y++) for(let x=0;x<N;x++){
+        const ix = fr[y][x];
+        if(ix >= 0){ ctx.fillStyle = palette[ix]; ctx.fillRect(colIdx*N+x, rowIdx*N+y, 1, 1); }
+      }
+    }
+  });
+
+  download(cv.toDataURL('image/png'), `${name}.atlas.png`);
+
+  const meta = {
+    type:'sprite-anim/v1',
+    sprite: name,
+    frame_w: N, frame_h: N,
+    palette: 'MCU-8',
+    actions: actions.map((a,i) => ({ id:a.id, row:i, frames:a.endFrame-a.startFrame+1, fps:a.fps }))
+  };
+  const blob = new Blob([JSON.stringify(meta,null,2)],{type:'application/json'});
+  const url  = URL.createObjectURL(blob);
+  download(url, `${name}.anim.json`);
+  setTimeout(()=>URL.revokeObjectURL(url), 800);
+}
+
+/* ---------- IMPORT: sprite16 MCU (/assets/sprites/*.json) ---------- */
+// Converte sprite16 JSON (índices MCU-8) para frame ModuLab.
+// idx 0 = transparente → -1 no ModuLab; idx 1-7 = cores MCU-8.
+export function importMCUSprite16(json){
+  if(!json || json.type !== 'sprite16')
+    throw new Error('importMCUSprite16: não é um sprite16 MCU válido.');
+  const MCU8 = ['#000000','#000000','#8C1A1A','#808080','#FFA500','#008000','#800080','#FFFF00'];
+  const W = json.width  || 16;
+  const H = json.height || 16;
+  const frame = Array.from({length:H}, (_,y) =>
+    Array.from({length:W}, (_,x) => {
+      const idx = json.data?.[y]?.[x] ?? 0;
+      return idx === 0 ? -1 : Math.min(7, Math.max(0, idx));
+    })
+  );
+  return { frame, palette: MCU8.slice(), W, H };
+}
+
 /* ---------- LegoBox remoto (servidor compartilhado da equipe) ---------- */
 export const legobox = (()=>{
   let conf = { url:'', token:'' };

@@ -9,7 +9,7 @@ import {
   showGrid, wrapPreview, showOnion,
   stencilOn, stencilProtectedIx,
   pattern, patternAltIx, ditherOn, ditherAltIx, ditherMode,
-  lastIssues, undoStack, redoStack, MAX_HISTORY
+  lastIssues, undoStack, redoStack, MAX_HISTORY, actions, setState
 } from './modulab-core.js';
 
 let c, ctx, ov, ovx;
@@ -373,9 +373,10 @@ export const selectionAPI = {
 };
 
 /* ---------- histórico ---------- */
-const snapshot = ()=> ({ N, Z, frames: deepCloneFrames(frames), fi });
+const snapshot = ()=> ({ N, Z, frames: deepCloneFrames(frames), fi, actions: actions.map(a=>({...a})) });
 function restore(s){
   frames.splice(0, frames.length, ...deepCloneFrames(s.frames));
+  if(s.actions) setState({ actions: s.actions.map(a=>({...a})) });
 }
 export function pushHistory(){
   undoStack.push(snapshot());

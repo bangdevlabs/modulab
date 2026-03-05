@@ -92,6 +92,10 @@
     .frames-list{display:grid;grid-template-columns:repeat(auto-fill,64px);gap:10px;max-height:340px;overflow:auto}
     .thumb-item{display:flex;flex-direction:column;align-items:center;gap:4px}
     .thumb-item.active .thumb{outline:2px solid var(--accent)}
+
+    /* ── Actions panel ── */
+    #actionsPanel h4{margin:12px 0 6px;font-size:13px;color:var(--muted)}
+    #actionsPanel input[type=text],#actionsPanel input[type=number]{background:#0f1420;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:3px 6px;font-size:12px}
   </style>
 </head>
 <body>
@@ -133,6 +137,7 @@
   <div class="group">
     <button id="exportPNG">Export PNG</button>
     <button id="exportJSON">Export JSON</button>
+    <button id="exportSprite16" style="display:none" title="Export sprite16 JSON (MCU/BangDev engine)">Export sprite16</button>
     <label class="filelike">
       <input id="importJSON" type="file" accept="application/json,image/png" hidden>
       <span id="importBtn">Import JSON/PNG</span>
@@ -230,9 +235,9 @@
       <div class="tray-head">
         <strong>Peças do LegoBox</strong>
         <div class="tray-controls">
-          <label>Categoria:
+          <label>Universo:
             <select id="trayCat">
-              <option value="__all__" selected>Todas</option>
+              <option value="__all__" selected>Todos</option>
             </select>
           </label>
           <small class="hint">Clique para carimbar · ⌫ apaga · ⌥/Alt renomeia</small>
@@ -260,6 +265,24 @@
       <button id="play">▶</button>
       <button id="pause">⏸</button>
       <label>FPS <input id="fps" type="number" min="1" max="60" value="6" style="width:60px"/></label>
+    </div>
+
+
+    <!-- ── Actions (MCU sprite-anim) ── -->
+    <div id="actionsPanel" style="display:none">
+      <h4 style="margin:12px 0 6px">Actions</h4>
+      <div class="row gap" style="flex-wrap:wrap;gap:6px">
+        <input id="actionId"    type="text"   placeholder="idle" title="nome da ação" style="width:64px">
+        <input id="actionStart" type="number" min="0" value="0"  title="frame inicial" style="width:44px">
+        <input id="actionEnd"   type="number" min="0" value="1"  title="frame final"   style="width:44px">
+        <input id="actionFps"   type="number" min="1" value="8"  title="FPS"           style="width:44px">
+        <button id="actionAdd" title="Adicionar ação">＋</button>
+      </div>
+      <div id="actionsList" style="margin-top:6px;display:flex;flex-direction:column;gap:4px"></div>
+      <div class="row gap" style="margin-top:8px">
+        <input id="spriteName" type="text" placeholder="rat" title="Nome do sprite" style="width:72px">
+        <button id="exportAtlas">Export Atlas</button>
+      </div>
     </div>
 
     <h3>Onion Skin+</h3>
@@ -302,6 +325,7 @@
         <select id="universe" style="min-width:160px">
           <option value="NKOTC">NKOTC (NES)</option>
           <option value="CB">CB / Lucas</option>
+          <option value="MCU">MCU (BangDev)</option>
         </select>
       </label>
       <small class="hint">Trocar o Universe redefine paleta, tamanho e regras do box.</small>

@@ -7,21 +7,60 @@
    ===================================================== */
 
 import {
-  $, $all, UNIVERSES, BG_THEMES, setState, clamp, makePixels,
-  N, Z, frames, fi, palette, selColorIx, pattern, PAT_N, cc, currentUniverse
+  $, $all, UNIVERSES, BG_THEMES, setState, clamp, makePixels, deepCloneFrames,
+  N, Z, frames, fi, palette, selColorIx, pattern, PAT_N, cc, currentUniverse, actions
 } from './modulab-core.js';
 
 import {
   mountCanvases, resizeCanvas, draw,
   initTools, setTool, selectionAPI,
   transforms, exportNESStrict,
-  doUndo, doRedo
+  doUndo, doRedo, pushHistory
 } from './modulab-canvas.js';
 
-import { exportPNG, exportJSON, exportSpritesheet, importFromFile, legobox } from './modulab-io.js';
+import { exportPNG, exportJSON, exportSpritesheet, exportSprite16JSON, exportSpriteAtlas, importMCUSprite16, importFromFile, legobox } from './modulab-io.js';
 
 /* ---------- helpers ---------- */
 const byId = (id)=> document.getElementById(id);
+
+/* ---------- Action colors (timeline) ---------- */
+const ACTION_COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899'];
+function actionColor(i){ return ACTION_COLORS[i % ACTION_COLORS.length]; }
+
+function addAction(id, startFrame, endFrame, fps){
+  if(!id) return;
+  const filtered = actions.filter(a => a.id !== id);
+  setState({ actions: [...filtered, { id, startFrame, endFrame: Math.min(endFrame, frames.length-1), fps }] });
+  renderActionsUI();
+}
+function removeAction(id){
+  setState({ actions: actions.filter(a => a.id !== id) });
+  renderActionsUI();
+}
+function renderActionsUI(){
+  const list = byId('actionsList'); if(!list) return;
+  list.innerHTML = '';
+  actions.forEach((a, i) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 6px;background:#141925;border:1px solid var(--line);border-radius:6px';
+    const sw = document.createElement('span');
+    sw.style.cssText = `width:10px;height:10px;border-radius:50%;background:${actionColor(i)};flex-shrink:0`;
+    row.appendChild(sw);
+    const lbl = document.createElement('span');
+    lbl.style.cssText = 'flex:1;font-size:12px;font-family:monospace';
+    lbl.textContent = `${a.id}  f${a.startFrame}–${a.endFrame}  ${a.fps}fps`;
+    row.appendChild(lbl);
+    const del = document.createElement('button');
+    del.textContent = '✕';
+    del.style.cssText = 'padding:1px 5px;font-size:11px;border-radius:5px;border:1px solid #3a2026;background:#28161a;color:#ff9aa9;cursor:pointer';
+    del.onclick = () => removeAction(a.id);
+    row.appendChild(del);
+    list.appendChild(row);
+  });
+  renderFramesList();
+}
+
+
 
 /* ---------- Theme ---------- */
 function applyBgTheme(mode){
@@ -186,6 +225,8 @@ function applyUniverse(uId){
   if (ghBox && !ghBox.value) ghBox.value = uId;
 
   // UI
+  const s16btn = document.getElementById('exportSprite16'); if(s16btn) s16btn.style.display = uId==='MCU' ? '' : 'none';
+  const ap = document.getElementById('actionsPanel'); if(ap) ap.style.display = uId==='MCU' ? '' : 'none';
   document.getElementById('size').value = String(N);
   renderPaletteUI(); drawPatternCanvas(); resizeCanvas(); draw();
 }
@@ -254,12 +295,38 @@ function wireTopbar(){
 
   byId('exportPNG') ?.addEventListener('click', exportPNG);
   byId('exportJSON')?.addEventListener('click', exportJSON);
+  byId('exportSprite16')?.addEventListener('click', exportSprite16JSON);
   byId('importJSON')?.addEventListener('change', async (e)=>{
-    const f=e.target.files?.[0]; if(!f) return;
-    const mode=byId('importMode')?.value||'flex';
-    try{ await importFromFile(f,mode); setState({fi:0}); resizeCanvas(); draw(); }
-    catch(err){ alert(err?.message||'Falha no import'); }
-    e.target.value='';
+    const f = e.target.files?.[0]; if(!f) return;
+    e.target.value = ''; // reset para permitir re-import do mesmo arquivo
+    try {
+      const text = await f.text();
+      const json = JSON.parse(text);
+
+      // ── MCU sprite16 ──
+      if(json.type === 'sprite16'){
+        const { frame, palette: mcu8, W, H } = importMCUSprite16(json);
+        pushHistory();
+        setState({ N:W, palette:mcu8, fi:0 });
+        frames.splice(0, frames.length, frame);
+        resizeCanvas(); draw(); renderFramesList(); renderPaletteUI();
+        return;
+      }
+
+      // ── Projeto ModuLab (formato existente) ──
+      if(json.frames && Array.isArray(json.frames)){
+        pushHistory();
+        setState({ N: json.size||N, palette: json.palette||palette, fi:0 });
+        frames.splice(0, frames.length, ...deepCloneFrames(json.frames));
+        resizeCanvas(); draw(); renderFramesList(); renderPaletteUI();
+        return;
+      }
+
+      alert('Formato não reconhecido. Esperado: sprite16 MCU ou project ModuLab.');
+    } catch(err){
+      console.error('[importJSON]', err);
+      alert(err?.message || 'Falha no import.');
+    }
   });
 
   // opcional: spritesheet rápido
@@ -300,6 +367,15 @@ function renderFramesList(){
 
     const badge=document.createElement('span'); badge.className='badge'; badge.textContent = (i===fi?'●':'');
     li.appendChild(badge);
+
+    // action badge: colored strip at bottom of thumb
+    const actionIdx = actions.findIndex(a => i >= a.startFrame && i <= a.endFrame);
+    if(actionIdx >= 0){
+      const strip = document.createElement('div');
+      strip.style.cssText = `height:3px;border-radius:2px;background:${actionColor(actionIdx)};width:90%;margin:2px auto 0`;
+      strip.title = actions[actionIdx].id;
+      li.appendChild(strip);
+    }
 
     li.onclick=()=>{ setState({ fi:i }); draw(); renderFramesList(); };
     ul.appendChild(li);
@@ -350,6 +426,20 @@ function wireTimeline(){
   byId('btnRedo')?.addEventListener('click', ()=> doRedo?.());
 
   renderFramesList();
+
+  // ── Actions UI ──
+  byId('actionAdd')?.addEventListener('click', ()=>{
+    const id    = (byId('actionId')?.value||'').trim(); if(!id) return;
+    const start = parseInt(byId('actionStart')?.value,10)||0;
+    const end   = parseInt(byId('actionEnd')?.value,10)||0;
+    const fps   = parseInt(byId('actionFps')?.value,10)||8;
+    addAction(id, Math.min(start,end), Math.max(start,end), fps);
+  });
+  byId('exportAtlas')?.addEventListener('click', ()=>{
+    const name = (byId('spriteName')?.value||'sprite').trim();
+    exportSpriteAtlas({ name, actions, frames, N, palette });
+  });
+  renderActionsUI();
 }
 
 /* ---------- LegoBox Bridge ---------- */
@@ -395,7 +485,7 @@ function wireGitBridge(){
     const rect   = hasSel ? selectionAPI.getRect() : { x:0, y:0, w:N, h:N };
     const pixels = hasSel ? selectionAPI.pick()    : frames[fi].map(r=>r.slice());
     try{
-      await legobox.saveJSON('pieces', name, { w:rect.w, h:rect.h, pixels, paletteSnapshot: palette.slice() });
+      await legobox.saveJSON('pieces', name, { w:rect.w, h:rect.h, pixels, paletteSnapshot: palette.slice(), universe: currentUniverse });
       alert(`Peça "${name}" salva.`);
       await refreshPiecesFromGit();
     }catch(err){ console.error(err); alert('Falha ao salvar peça.'); }
@@ -430,17 +520,17 @@ async function refreshPiecesFromGit(){
     const all = await Promise.all(
       names.map(async n => {
         const d = await legobox.loadJSON('pieces', n);
-        return { name:n, data:d, category: d.category||'' };
+        return { name:n, data:d, universe: d.universe||'' };
       })
     );
 
-    const setCats = Array.from(new Set(all.map(it=>it.category).filter(Boolean))).sort();
-    const prev = catSel.value || '__all__';
-    catSel.innerHTML = '<option value="__all__">Todas</option>' + setCats.map(c=>`<option value="${c}">${c}</option>`).join('');
-    catSel.value = setCats.includes(prev) ? prev : '__all__';
+    const setUnis = Array.from(new Set(all.map(it=>it.universe).filter(Boolean))).sort();
+    const prev = catSel.value || currentUniverse;
+    catSel.innerHTML = '<option value="__all__">Todos</option>' + setUnis.map(u=>`<option value="${u}">${UNIVERSES[u]?.name || u}</option>`).join('');
+    catSel.value = setUnis.includes(prev) ? prev : (setUnis.includes(currentUniverse) ? currentUniverse : '__all__');
 
     const active   = catSel.value;
-    const filtered = all.filter(it=> active==='__all__' ? true : it.category===active);
+    const filtered = all.filter(it=> active==='__all__' ? true : it.universe===active);
     rail.innerHTML  = '';
 
     if(!filtered.length){
@@ -460,7 +550,7 @@ async function refreshPiecesFromGit(){
       }
       thumb.appendChild(can); item.appendChild(thumb);
       const label=document.createElement('div'); label.className='meta';
-      label.textContent=`${meta.name} — ${meta.data.w}×${meta.data.h}${meta.category?' · '+meta.category:''}`;
+      label.textContent=`${meta.name} — ${meta.data.w}×${meta.data.h}${meta.universe?' · '+meta.universe:''}`;
       item.appendChild(label);
 
       const btns=document.createElement('div'); btns.className='piece-btns';
