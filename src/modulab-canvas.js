@@ -9,7 +9,7 @@ import {
   showGrid, wrapPreview, showOnion,
   stencilOn, stencilProtectedIx,
   pattern, patternAltIx, ditherOn, ditherAltIx, ditherMode,
-  lastIssues, undoStack, redoStack, MAX_HISTORY, actions, setState
+  lastIssues, undoStack, redoStack, MAX_HISTORY, actions
 } from './modulab-core.js';
 
 let c, ctx, ov, ovx;
